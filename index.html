@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GeoCota</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="GeoCota">
+<meta name="theme-color" content="#f6dede">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Merriweather:wght@700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#f6dede; --card:#fbe9e9; --ink:#2b1f1c; --muted:#6d5a55;
+    --brown:#7a4a34; --line:#e7c9c9; --red:#c8202c;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font-family:Inter,-apple-system,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+  body{display:flex;flex-direction:column;
+    padding-top:env(safe-area-inset-top);padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+  header{padding:14px 20px 6px}
+  h1{font-family:Merriweather,Georgia,serif;font-size:30px;margin:0}
+  #status{color:var(--muted);font-size:15px;margin-top:2px}
+  main{flex:1;min-height:0;position:relative}
+  .view{position:absolute;inset:0;overflow-y:auto;padding:10px 18px 20px;display:none}
+  .view.active{display:block}
+  #radarView{padding:0}
+  .card{background:var(--card);border-radius:16px;padding:14px 16px;box-shadow:0 1px 0 rgba(0,0,0,.04)}
+  .label{font-size:13px;font-weight:600;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .big{font-size:52px;font-weight:400;margin:4px 0 2px;line-height:1.1}
+  .mid{font-size:30px;margin:4px 0 2px}
+  .sub{font-size:13.5px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
+  .grid .card{padding:12px}
+  .grid .mid{font-size:22px}
+  #dialWrap{display:flex;justify-content:center;margin:14px 0 6px}
+  #dial{width:min(84vw,340px);height:auto}
+  .btns{display:flex;gap:10px;margin-top:8px}
+  button{font:inherit;font-size:16px;font-weight:600;border-radius:999px;padding:13px 10px;flex:1;cursor:pointer}
+  .primary{background:var(--brown);color:#fff;border:2px solid var(--brown)}
+  .ghost{background:transparent;color:var(--brown);border:2px solid var(--brown)}
+  .hint{text-align:center;font-size:13px;color:var(--muted);margin:10px 4px 0}
+  #rainCard{margin-top:12px}
+  #rainMsg{font-size:17px;font-weight:500;margin:6px 0 8px}
+  #rainCard.wet{background:#dfe8f7}
+  #bars{display:flex;align-items:flex-end;gap:4px;height:46px}
+  #bars div{flex:1;background:#4b7bd1;border-radius:3px 3px 0 0;min-height:2px;opacity:.85}
+  #barLbl{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:3px}
+  nav{display:flex;border-top:1px solid var(--line);background:var(--bg);
+    padding-bottom:env(safe-area-inset-bottom)}
+  nav button{border:0;border-radius:0;background:none;color:var(--muted);padding:12px 0 10px;font-size:14px}
+  nav button.on{color:var(--brown)}
+  nav svg{display:block;margin:0 auto 3px}
+  #map{position:absolute;inset:0}
+  #radarBar{position:absolute;left:12px;right:12px;bottom:12px;z-index:500;background:rgba(251,233,233,.95);
+    border-radius:16px;padding:10px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+  #play{flex:0 0 44px;height:44px;padding:0;border-radius:50%}
+  #slider{flex:1;accent-color:var(--brown)}
+  #frameTime{font-variant-numeric:tabular-nums;font-weight:600;min-width:62px;text-align:right}
+  #locate{position:absolute;right:12px;top:12px;z-index:500;width:44px;height:44px;padding:0;border-radius:50%;
+    background:#fff;border:0;box-shadow:0 2px 8px rgba(0,0,0,.2);flex:none}
+  .leaflet-control-attribution{font-size:10px}
+  dialog{border:0;border-radius:18px;padding:20px;background:var(--card);color:var(--ink);width:min(90vw,360px)}
+  dialog::backdrop{background:rgba(0,0,0,.35)}
+  dialog input{width:100%;font-size:22px;padding:10px;border-radius:10px;border:1px solid var(--line);margin:12px 0;background:#fff}
+</style>
+</head>
+<body>
+<header>
+  <h1>GeoCota</h1>
+  <div id="status">Cercant posició…</div>
+</header>
+
+<main>
+  <section id="altView" class="view active">
+    <div class="card">
+      <div class="label">Altitud</div>
+      <div class="big" id="altMain">— m</div>
+      <div class="sub" id="calInfo">Sense calibrar · altitud GPS</div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">GPS</div>
+        <div class="mid" id="gpsAlt">—</div>
+        <div class="sub" id="gpsAcc">&nbsp;</div>
+      </div>
+      <div class="card">
+        <div class="label">Terreny</div>
+        <div class="mid" id="demAlt">—</div>
+        <div class="sub">model 90 m</div>
+      </div>
+      <div class="card">
+        <div class="label">Pressió</div>
+        <div class="mid" id="press">—</div>
+        <div class="sub" id="pressTrend">hPa</div>
+      </div>
+    </div>
+
+    <div id="dialWrap"><svg id="dial" viewBox="0 0 300 300"></svg></div>
+
+    <div class="btns">
+      <button class="primary" id="calTerrain">Calibra amb terreny</button>
+      <button class="ghost" id="calKnown">Cota coneguda…</button>
+    </div>
+    <div class="hint">Mantén premut «Calibra amb terreny» per tornar a l'altitud GPS pura.</div>
+
+    <div class="card" id="rainCard">
+      <div class="label">Alarma de pluja · pròximes 2 h</div>
+      <div id="rainMsg">Esperant posició…</div>
+      <div id="bars"></div>
+      <div id="barLbl"><span>ara</span><span>+1 h</span><span>+2 h</span></div>
+    </div>
+    <div class="hint">Pressió i previsió: Open-Meteo · Radar: RainViewer</div>
+  </section>
+
+  <section id="radarView" class="view">
+    <div id="map"></div>
+    <button id="locate" aria-label="Centra a la meva posició">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7a4a34" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+    </button>
+    <div id="radarBar">
+      <button class="primary" id="play" aria-label="Reprodueix">▶</button>
+      <input type="range" id="slider" min="0" max="0" value="0">
+      <div id="frameTime">--:--</div>
+    </div>
+  </section>
+</main>
+
+<nav>
+  <button id="tabAlt" class="on">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20l6-10 4 6 3-4 5 8z"/></svg>Altitud
+  </button>
+  <button id="tabRadar">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 15a4 4 0 1 1 1-7.9A5 5 0 0 1 18 9a3 3 0 0 1 0 6z"/><path d="M8 19l-1 2M12 19l-1 2M16 19l-1 2"/></svg>Radar
+  </button>
+</nav>
+
+<dialog id="knownDlg">
+  <div class="label">Cota coneguda</div>
+  <div class="sub" style="margin-top:6px">Escriu l'altitud real d'on ets (un vèrtex geodèsic, un cim, un rètol…).</div>
+  <input type="number" id="knownInput" inputmode="decimal" placeholder="metres">
+  <div class="btns">
+    <button class="ghost" id="knownCancel">Cancel·la</button>
+    <button class="primary" id="knownOk">Desa</button>
+  </div>
+</dialog>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+
+  // ---------- emmagatzematge ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+
+  // ---------- estat ----------
+  let pos = null;          // {lat, lon, alt, altAcc, acc}
+  let dem = null;          // elevació del terreny
+  let cal = store.get('geocota.cal', null); // {offset, type, ts}
+  let lastWxAt = 0, lastWxPos = null;
+
+  const fmt = n => Math.round(n).toLocaleString('ca-ES');
+  const hhmm = d => d.toLocaleTimeString('ca-ES', { hour: '2-digit', minute: '2-digit' });
+  const ddmm = d => d.toLocaleDateString('ca-ES', { day: '2-digit', month: '2-digit' });
+
+  // ---------- esfera ----------
+  const NS = 'http://www.w3.org/2000/svg';
+  const dial = $('dial');
+  const el = (tag, attrs, parent = dial) => {
+    const e = document.createElementNS(NS, tag);
+    for (const k in attrs) e.setAttribute(k, attrs[k]);
+    parent.appendChild(e); return e;
+  };
+  function buildDial() {
+    const c = 150;
+    el('circle', { cx: c, cy: c, r: 146, fill: '#6f5c58' });
+    el('circle', { cx: c, cy: c, r: 132, fill: '#f6d3d3' });
+    for (let i = 0; i < 100; i++) {
+      const a = (i / 100) * 2 * Math.PI - Math.PI / 2;
+      const major = i % 10 === 0, mid = i % 5 === 0;
+      const r1 = 130, r2 = major ? 112 : mid ? 118 : 123;
+      el('line', {
+        x1: c + Math.cos(a) * r1, y1: c + Math.sin(a) * r1,
+        x2: c + Math.cos(a) * r2, y2: c + Math.sin(a) * r2,
+        stroke: '#2b1f1c', 'stroke-width': major ? 2.4 : 1
+      });
+      if (major) {
+        const t = el('text', {
+          x: c + Math.cos(a) * 96, y: c + Math.sin(a) * 96 + 6,
+          'text-anchor': 'middle', 'font-size': 16, 'font-family': 'Merriweather,Georgia,serif', fill: '#2b1f1c'
+        });
+        t.textContent = i * 10;
+      }
+    }
+    el('circle', { cx: c, cy: c, r: 52, fill: '#5a4440' });
+    for (let i = 0; i < 50; i++) {
+      const a = (i / 50) * 2 * Math.PI - Math.PI / 2;
+      const major = i % 5 === 0;
+      el('line', {
+        x1: c + Math.cos(a) * 50, y1: c + Math.sin(a) * 50,
+        x2: c + Math.cos(a) * (major ? 43 : 46), y2: c + Math.sin(a) * (major ? 43 : 46),
+        stroke: '#f6d3d3', 'stroke-width': major ? 1.6 : .7
+      });
+      if (major) {
+        const t = el('text', {
+          x: c + Math.cos(a) * 34, y: c + Math.sin(a) * 34 + 4,
+          'text-anchor': 'middle', 'font-size': 11, fill: '#f6d3d3'
+        });
+        t.textContent = i / 5;
+      }
+    }
+    const u = el('text', { x: c, y: c + 22, 'text-anchor': 'middle', 'font-size': 8, fill: '#f6d3d3' });
+    u.textContent = '× 1000 m';
+    window._handK = el('line', { x1: c, y1: c + 6, x2: c, y2: c - 44, stroke: '#c8202c', 'stroke-width': 4, 'stroke-linecap': 'round' });
+    window._handM = el('line', { x1: c, y1: c + 18, x2: c, y2: c - 126, stroke: '#111', 'stroke-width': 2.6, 'stroke-linecap': 'round' });
+    el('circle', { cx: c, cy: c, r: 6, fill: '#111' });
+    setHands(0);
+  }
+  function setHands(alt) {
+    const m = ((alt % 1000) + 1000) % 1000;
+    const k = ((alt % 10000) + 10000) % 10000;
+    _handM.setAttribute('transform', `rotate(${m / 1000 * 360} 150 150)`);
+    _handK.setAttribute('transform', `rotate(${k / 10000 * 360} 150 150)`);
+  }
+  buildDial();
+
+  // ---------- altitud ----------
+  function render() {
+    if (!pos || pos.alt == null) {
+      $('altMain').textContent = '— m';
+      $('gpsAlt').textContent = '—';
+      $('gpsAcc').textContent = pos ? 'sense altitud' : '';
+    } else {
+      const shown = pos.alt + (cal ? cal.offset : 0);
+      $('altMain').textContent = fmt(shown) + ' m';
+      $('gpsAlt').textContent = fmt(pos.alt) + ' m';
+      $('gpsAcc').textContent = pos.altAcc != null ? '± ' + fmt(pos.altAcc) + ' m' : '';
+      setHands(shown);
+    }
+    if (cal) {
+      const d = new Date(cal.ts);
+      $('calInfo').textContent = `Calibrat (${cal.type}) ${ddmm(d)} ${hhmm(d)} · correcció ${cal.offset >= 0 ? '+' : ''}${fmt(cal.offset)} m`;
+    } else {
+      $('calInfo').textContent = 'Sense calibrar · altitud GPS';
+    }
+    $('demAlt').textContent = dem != null ? fmt(dem) + ' m' : '—';
+  }
+
+  function onPos(p) {
+    const c = p.coords;
+    pos = { lat: c.latitude, lon: c.longitude, alt: c.altitude, altAcc: c.altitudeAccuracy, acc: c.accuracy };
+    $('status').textContent = `Posició ± ${fmt(c.accuracy)} m · ${c.latitude.toFixed(4)}, ${c.longitude.toFixed(4)}`;
+    render();
+    maybeWeather();
+    if (userMarker) userMarker.setLatLng([pos.lat, pos.lon]);
+  }
+  function onPosErr(e) {
+    $('status').textContent = e.code === 1
+      ? 'Cal permís d\'ubicació (Configuració › Privacitat › Localització › Safari)'
+      : 'No s\'ha pogut obtenir la posició';
+  }
+  if ('geolocation' in navigator) {
+    navigator.geolocation.watchPosition(onPos, onPosErr, { enableHighAccuracy: true, maximumAge: 2000, timeout: 30000 });
+  } else {
+    $('status').textContent = 'Aquest navegador no té geolocalització';
+  }
+
+  // ---------- calibratge ----------
+  function setCal(target, type) {
+    if (!pos || pos.alt == null) { flash('Encara no hi ha altitud GPS'); return; }
+    cal = { offset: target - pos.alt, type, ts: Date.now() };
+    store.set('geocota.cal', cal);
+    render();
+  }
+  function flash(msg) {
+    const s = $('status'), old = s.textContent;
+    s.textContent = msg; setTimeout(() => { s.textContent = old; }, 2500);
+  }
+  let pressTimer = null, longPressed = false;
+  const calBtn = $('calTerrain');
+  calBtn.addEventListener('pointerdown', () => {
+    longPressed = false;
+    pressTimer = setTimeout(() => {
+      longPressed = true; cal = null; store.del('geocota.cal'); render(); flash('Calibratge esborrat');
+    }, 700);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => calBtn.addEventListener(ev, () => clearTimeout(pressTimer)));
+  calBtn.addEventListener('click', () => {
+    if (longPressed) return;
+    if (dem == null) { flash('Encara no tinc la cota del terreny'); return; }
+    setCal(dem, 'terreny');
+  });
+  calBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+  const dlg = $('knownDlg');
+  $('calKnown').addEventListener('click', () => {
+    $('knownInput').value = '';
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+    setTimeout(() => $('knownInput').focus(), 50);
+  });
+  $('knownCancel').addEventListener('click', () => dlg.close());
+  $('knownOk').addEventListener('click', () => {
+    const v = parseFloat(String($('knownInput').value).replace(',', '.'));
+    if (!isNaN(v)) setCal(v, 'manual');
+    dlg.close();
+  });
+
+  // ---------- meteo (Open-Meteo) ----------
+  function dist(a, b) {
+    const R = 6371e3, r = Math.PI / 180;
+    const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
+    const x = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(x));
+  }
+  function maybeWeather(force) {
+    if (!pos) return;
+    const now = Date.now();
+    if (!force && lastWxPos && now - lastWxAt < 10 * 60e3 && dist(lastWxPos, pos) < 1000) return;
+    lastWxAt = now; lastWxPos = { lat: pos.lat, lon: pos.lon };
+    loadWeather(pos.lat, pos.lon);
+  }
+  async function loadWeather(lat, lon) {
+    const url = 'https://api.open-meteo.com/v1/forecast'
+      + `?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}`
+      + '&current=pressure_msl,precipitation,temperature_2m'
+      + '&hourly=pressure_msl&past_hours=3&forecast_hours=1'
+      + '&minutely_15=precipitation&forecast_minutely_15=8'
+      + '&timezone=auto';
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(r.status);
+      const j = await r.json();
+      dem = j.elevation;
+      const p = j.current.pressure_msl;
+      $('press').textContent = p.toFixed(1);
+      const hp = (j.hourly && j.hourly.pressure_msl) || [];
+      if (hp.length > 1 && hp[0] != null) {
+        const d = p - hp[0];
+        const arrow = d > 1 ? '↑' : d < -1 ? '↓' : '→';
+        $('pressTrend').textContent = `hPa ${arrow} ${d >= 0 ? '+' : ''}${d.toFixed(1)}/3h`;
+      }
+      renderRain(j);
+      render();
+    } catch (e) {
+      lastWxAt = 0;
+      $('rainMsg').textContent = 'No s\'han pogut carregar les dades meteorològiques';
+    }
+  }
+  function renderRain(j) {
+    const vals = (j.minutely_15 && j.minutely_15.precipitation) || [];
+    const times = (j.minutely_15 && j.minutely_15.time) || [];
+    const bars = $('bars'); bars.innerHTML = '';
+    const max = Math.max(1, ...vals.map(v => v || 0));
+    vals.forEach(v => {
+      const d = document.createElement('div');
+      d.style.height = Math.max(2, (v || 0) / max * 46) + 'px';
+      if (!v) d.style.opacity = '.2';
+      bars.appendChild(d);
+    });
+    const card = $('rainCard');
+    const nowRain = (j.current && j.current.precipitation) || 0;
+    const idx = vals.findIndex(v => v >= 0.1);
+    let msg;
+    if (nowRain > 0) msg = '☔ Està plovent ara mateix';
+    else if (idx === 0) msg = '☔ Pluja imminent';
+    else if (idx > 0) {
+      // l'hora és local del lloc (timezone=auto)
+      const t = times[idx] ? times[idx].slice(11, 16) : '';
+      msg = `🌦 Pluja prevista cap a les ${t} (d'aquí ~${idx * 15} min)`;
+    } else msg = '☀️ No es preveu pluja en les pròximes 2 hores';
+    $('rainMsg').textContent = msg;
+    card.classList.toggle('wet', nowRain > 0 || idx >= 0);
+  }
+  setInterval(() => maybeWeather(true), 10 * 60e3);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) maybeWeather(true); });
+
+  // ---------- radar (RainViewer + Leaflet) ----------
+  let map = null, userMarker = null, frames = [], layers = [], cur = 0, timer = null, rvHost = '';
+  function initMap() {
+    if (map) { map.invalidateSize(); return; }
+    const start = pos ? [pos.lat, pos.lon] : [41.39, 2.17];
+    map = L.map('map', { zoomControl: false, attributionControl: true }).setView(start, 7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+      subdomains: 'abcd', maxZoom: 18,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> © <a href="https://carto.com/">CARTO</a> · Weather data by <a href="https://www.rainviewer.com/">RainViewer</a>'
+    }).addTo(map);
+    userMarker = L.circleMarker(start, { radius: 7, color: '#fff', weight: 2, fillColor: '#7a4a34', fillOpacity: 1 }).addTo(map);
+    loadRadar();
+    setInterval(loadRadar, 5 * 60e3);
+  }
+  async function loadRadar() {
+    try {
+      const r = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+      const j = await r.json();
+      rvHost = j.host;
+      const newFrames = (j.radar && j.radar.past) || [];
+      if (!newFrames.length) return;
+      layers.forEach(l => map.removeLayer(l));
+      frames = newFrames;
+      layers = frames.map(f => L.tileLayer(`${rvHost}${f.path}/256/{z}/{x}/{y}/2/1_1.png`, {
+        opacity: 0, maxNativeZoom: 7, maxZoom: 18, zIndex: 10, tileSize: 256
+      }).addTo(map));
+      const s = $('slider'); s.max = frames.length - 1;
+      show(frames.length - 1);
+    } catch (e) {
+      $('frameTime').textContent = 'error';
+    }
+  }
+  function show(i) {
+    if (!layers.length) return;
+    layers[cur] && layers[cur].setOpacity(0);
+    cur = i;
+    layers[cur].setOpacity(0.7);
+    $('slider').value = i;
+    $('frameTime').textContent = hhmm(new Date(frames[i].time * 1000));
+  }
+  function stop() { clearTimeout(timer); timer = null; $('play').textContent = '▶'; }
+  function step() {
+    const next = (cur + 1) % frames.length;
+    show(next);
+    timer = setTimeout(step, next === frames.length - 1 ? 1500 : 500);
+  }
+  $('play').addEventListener('click', () => {
+    if (timer) stop(); else { $('play').textContent = '❚❚'; step(); }
+  });
+  $('slider').addEventListener('input', e => { stop(); show(+e.target.value); });
+  $('locate').addEventListener('click', () => { if (map && pos) map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 8)); });
+
+  // ---------- pestanyes ----------
+  function tab(which) {
+    const alt = which === 'alt';
+    $('altView').classList.toggle('active', alt);
+    $('radarView').classList.toggle('active', !alt);
+    $('tabAlt').classList.toggle('on', alt);
+    $('tabRadar').classList.toggle('on', !alt);
+    if (!alt) setTimeout(initMap, 30); else stop();
+  }
+  $('tabAlt').addEventListener('click', () => tab('alt'));
+  $('tabRadar').addEventListener('click', () => tab('radar'));
+
+  render();
+})();
+</script>
+</body>
+</html>
